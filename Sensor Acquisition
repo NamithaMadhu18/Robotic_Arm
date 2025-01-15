@@ -1,0 +1,118 @@
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Servo.h>
+
+// Flex sensor pins
+const int flexPins[] = {36, 39, 34, 35, 32}; // ADC pins for ESP32
+int flexValues[5];
+
+// Servo pins
+const int servoPins[] = {25, 26, 27, 14, 12};
+Servo servos[5];
+
+// MPU6050
+Adafruit_MPU6050 mpu;
+
+// Thresholds for static gestures (calibrated values)
+const int flexThresholds[5] = {400, 400, 400, 400, 400};
+
+void setup() {
+  // Initialize serial monitor
+  Serial.begin(115200);
+
+  // Initialize servos
+  for (int i = 0; i < 5; i++) {
+    servos[i].attach(servoPins[i]);
+  }
+
+  // Initialize MPU6050
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 sensor!");
+    while (1);
+  }
+  mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
+  mpu.setGyroRange(MPU6050_RANGE_250_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+  // Flex sensor setup
+  for (int i = 0; i < 5; i++) {
+    pinMode(flexPins[i], INPUT);
+  }
+}
+
+void loop() {
+  // Read flex sensor values
+  for (int i = 0; i < 5; i++) {
+    flexValues[i] = analogRead(flexPins[i]);
+  }
+
+  // Map flex sensor values to servo angles
+  for (int i = 0; i < 5; i++) {
+    int angle = map(flexValues[i], 0, 4095, 0, 180); // Adjust based on calibration
+    servos[i].write(angle);
+  }
+
+  // Detect static gestures
+  detectStaticGestures();
+
+  // Read IMU data
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  // Detect dynamic gestures
+  detectDynamicGestures(a, g);
+
+  // Small delay to stabilize readings
+  delay(50);
+}
+
+void detectStaticGestures() {
+  // Fist
+  if (flexValues[0] > flexThresholds[0] && flexValues[1] > flexThresholds[1] &&
+      flexValues[2] > flexThresholds[2] && flexValues[3] > flexThresholds[3] &&
+      flexValues[4] > flexThresholds[4]) {
+    Serial.println("Fist Detected");
+  }
+  // Open Hand
+  else if (flexValues[0] < flexThresholds[0] && flexValues[1] < flexThresholds[1] &&
+           flexValues[2] < flexThresholds[2] && flexValues[3] < flexThresholds[3] &&
+           flexValues[4] < flexThresholds[4]) {
+    Serial.println("Open Hand Detected");
+  }
+  // Pointing
+  else if (flexValues[0] < flexThresholds[0] && flexValues[1] > flexThresholds[1] &&
+           flexValues[2] > flexThresholds[2] && flexValues[3] > flexThresholds[3] &&
+           flexValues[4] > flexThresholds[4]) {
+    Serial.println("Pointing Detected");
+  }
+  // Thumbs Up
+  else if (flexValues[0] > flexThresholds[0] && flexValues[1] > flexThresholds[1] &&
+           flexValues[2] > flexThresholds[2] && flexValues[3] > flexThresholds[3] &&
+           flexValues[4] < flexThresholds[4]) {
+    Serial.println("Thumbs Up Detected");
+  }
+}
+
+void detectDynamicGestures(sensors_event_t a, sensors_event_t g) {
+  // Waving motion
+  if (g.gyro.y > 1.0) {
+    Serial.println("Wave Right");
+  } else if (g.gyro.y < -1.0) {
+    Serial.println("Wave Left");
+  }
+
+  // Tilting motion
+  if (a.acceleration.x > 9.8) {
+    Serial.println("Tilt Left");
+  } else if (a.acceleration.x < -9.8) {
+    Serial.println("Tilt Right");
+  }
+
+  // Wrist rotation
+  if (g.gyro.z > 1.0) {
+    Serial.println("Wrist Rotation Right");
+  } else if (g.gyro.z < -1.0) {
+    Serial.println("Wrist Rotation Left");
+  }
+}
