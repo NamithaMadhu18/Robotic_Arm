@@ -1,0 +1,67 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+// Wi-Fi Credentials
+const char* ssid = "Wokwi-GUEST";
+const char* password = "";
+// MQTT Broker Settings
+const char* mqttServer = "broker.emqx.io";
+const int mqttPort = 1883;
+const char* mqttUser = "robot1234";
+const char* mqttPassword = "12345678";
+WiFiClient espClient;
+PubSubClient client(espClient);
+// Function to connect to Wi-Fi
+void connectToWiFi() {
+Serial.print("Connecting to Wi-Fi: ");
+Serial.println(ssid);
+WiFi.begin(ssid, password);
+unsigned long startAttemptTime = millis();
+while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime <
+10000) {
+delay(500);
+Serial.print(".");
+}
+if (WiFi.status() == WL_CONNECTED) {
+Serial.println("\nConnected to Wi-Fi");
+} else {
+Serial.println("\nFailed to connect to Wi-Fi");
+}
+}
+// Function to connect to MQTT broker
+void connectToMQTT() {
+Serial.println("Connecting to MQTT...");
+while (!client.connected()) {
+if (client.connect("ESP32Sender", mqttUser, mqttPassword)) {
+Serial.println("Connected to MQTT Broker");
+} else {
+Serial.print("MQTT connection failed, state: ");
+Serial.println(client.state());
+delay(5000); // Retry every 5 seconds
+}
+}
+}
+// Reconnect if MQTT is disconnected
+void ensureMQTTConnection() {
+if (!client.connected()) {
+connectToMQTT();
+}
+}
+void setup() {
+Serial.begin(115200);
+connectToWiFi();
+client.setServer(mqttServer, mqttPort);
+connectToMQTT();
+}
+void loop() {
+ensureMQTTConnection();
+if (Serial.available() > 0) {
+String message = Serial.readStringUntil('\n');
+message.trim(); // Remove leading/trailing whitespace
+if (message.length() > 0) {
+Serial.print("Sending message: ");
+Serial.println(message);
+client.publish("esp32/test", message.c_str());
+}
+}
+client.loop(); // Maintain MQTT connection
+}
